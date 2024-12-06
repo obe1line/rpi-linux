@@ -29,6 +29,9 @@
 
 #define DRIVER_NAME "evdmoom1"
 
+/* Default initial pixel rate, will get updated for each mode. */
+#define AP1302_INITIAL_PIXEL_RATE	590000000
+
 #define AP1302_FW_WINDOW_SIZE			0x2000
 #define AP1302_FW_WINDOW_OFFSET			0x8000
 
@@ -422,6 +425,7 @@ enum {
 struct ap1302_format_info {
 	unsigned int code;
 	u16 out_fmt;
+	u64 pixel_rate;
 };
 
 struct ap1302_format {
@@ -478,6 +482,8 @@ struct ap1302_device {
 	struct regmap *regmap16;
 	struct regmap *regmap32;
 	u32 reg_page;
+
+	u64 pixel_rate;
 
 	const struct firmware *fw;
 
@@ -536,16 +542,19 @@ static const struct ap1302_format_info supported_video_formats[] = {
 		.code = MEDIA_BUS_FMT_UYVY8_1X16,
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_YUV_JFIF
 			 | AP1302_PREVIEW_OUT_FMT_FST_YUV_422,
+		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
 	}, {
 		.code = MEDIA_BUS_FMT_UYYVYY8_0_5X24,
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_YUV_JFIF
 			 | AP1302_PREVIEW_OUT_FMT_FST_YUV_420,
+		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
 	},
 //#if defined(MEDIA_BUS_FMT_VYYUYY8_1X24) // MEDIA_BUS_FMT_VYYUYY8_1X24 for Xilinx only ?
 	{
 		.code = MEDIA_BUS_FMT_SRGGB12_1X12,
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_RAW12
 			 | AP1302_PREVIEW_OUT_FMT_FST_RAW_SENSOR,
+		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
 	},
 //#endif
 };
@@ -1598,6 +1607,12 @@ static int ap1302_get_gain(struct ap1302_device *ap1302, s32 *value)
 	return 0;
 }
 
+static int ap1302_get_pixel_rate(struct ap1302_device *ap1302, s32 *value)
+{
+	*value = ap1302->pixel_rate;
+	return 0;
+}
+
 static int ap1302_get_hblank(struct ap1302_device *ap1302, s32 *value)
 {
 	dev_dbg(ap1302->dev,"Get Hblank\n");
@@ -2039,6 +2054,9 @@ static int ap1302_g_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_VFLIP:
 		return ap1302_get_vflip(ap1302, &ctrl->val);
+
+	case V4L2_CID_PIXEL_RATE:
+		return ap1302_get_pixel_rate(ap1302, &ctrl->val);
 
 	case V4L2_CID_HBLANK:
 		return ap1302_get_hblank(ap1302, &ctrl->val);
@@ -2667,51 +2685,6 @@ static int ap1302_log_status(struct v4l2_subdev *sd)
 
 static int ap1302_subdev_registered(struct v4l2_subdev *sd)
 {
-	//struct ap1302_device *ap1302 = to_ap1302(sd);
-	//unsigned int i;
-	//const char *status;
-	//int ret;
-	//u32 flag;
-
-	//for (i = 0; i < ARRAY_SIZE(ap1302->sensors); ++i) {
-	//	struct ap1302_sensor *sensor = &ap1302->sensors[i];
-
-	//	dev_dbg(ap1302->dev, "registering sensor %u\n", i);
-
-	//	ret = v4l2_device_register_subdev(sd->v4l2_dev, &sensor->sd);
-	//	if (ret)
-	//		return ret;
-
-	//	flag=0;
-	//	status = of_get_property(sensor->of_node, "status", &ret);
-	//	if (status == NULL) {
-			// No sensor node, unconnected, disabled
-	//		flag = MEDIA_LNK_FL_IMMUTABLE;
-	//	}
-	//	else if (ret > 0) {
-	//		if (!strcmp(status, "okay") || !strcmp(status, "ok"))
-	//			flag = MEDIA_LNK_FL_ENABLED;
-	//		else if (!strcmp(status, "immutable"))
-	//			flag = MEDIA_LNK_FL_ENABLED |
-	//				MEDIA_LNK_FL_IMMUTABLE;
-			// else disabled
-	//	}
-
-	//	ret = media_create_pad_link(&sensor->sd.entity, 0,
-	//				    &sd->entity, i,
-	//				    flag);
-	//	if (ret)
-	//		return ret;
-
-		/* Notify MIPI subdev entity */
-	//	ret = media_entity_call(&sd->entity, link_setup,
-	//				&sd->entity.pads[i],
-	//				&sensor->sd.entity.pads[0],
-	//				flag);
-	//	if (ret < 0 && ret != -ENOIOCTLCMD)
-	//		return ret;
-	//}
-
 	return 0;
 }
 
@@ -3398,9 +3371,6 @@ static int ap1302_config_v4l2(struct ap1302_device *ap1302)
 	v4l2_i2c_subdev_init(sd, ap1302->client, &ap1302_subdev_ops);
 
 	strscpy(sd->name, DRIVER_NAME, sizeof(sd->name));
-	//strlcat(sd->name, ".", sizeof(sd->name));
-	//strlcat(sd->name, dev_name(ap1302->dev), sizeof(sd->name));
-	dev_dbg(ap1302->dev, "name %s\n", sd->name);
 
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
 	sd->internal_ops = &ap1302_subdev_internal_ops;
@@ -3447,8 +3417,6 @@ error_media:
 
 static int ap1302_parse_of(struct ap1302_device *ap1302)
 {
-	//struct device_node *sensors;
-	//struct device_node *node;
 	struct fwnode_handle *ep;
 	int ret;
 
@@ -3525,76 +3493,6 @@ static int ap1302_parse_of(struct ap1302_device *ap1302)
 		dev_err(ap1302->dev, "no link frequencies defined");
 		return -EINVAL;
 	}
-
-/*
-	// Sensors
-	sensors = of_get_child_by_name(ap1302->dev->of_node, "sensors");
-	if (!sensors) {
-//		dev_err(ap1302->dev, "'sensors' child node not found\n");
-//		return -EINVAL;
-
-		memcpy(&ap1302->sensor_info,
-				&ap1302_sensor_info_tpg,
-				sizeof(ap1302_sensor_info_tpg));
-		dev_warn(ap1302->dev, "no sensors node found, using tpg\n");
-	}
-	else
-	{
-		ret = of_property_read_string(sensors, "sensor,model",
-				&ap1302->sensor_info.model);
-		if (ret < 0) {
-			dev_err(ap1302->dev, "missing sensor,model info\n");
-			ret = -EINVAL;
-			goto done;
-		}
-		dev_dbg(ap1302->dev, "sensor,model '%s'\n",
-				ap1302->sensor_info.model);
-
-
-		ret = of_property_read_u32_array(sensors, "sensor,resolution",
-					(u32*)&ap1302->sensor_info.resolution,
-					2);
-		if (ret < 0) {
-			dev_err(ap1302->dev, "missing sensor,resolution info\n");
-			ret = -EINVAL;
-			goto done;
-		}
-		dev_dbg(ap1302->dev, "sensor,resolution %d x %d\n",
-				ap1302->sensor_info.resolution.width,
-				ap1302->sensor_info.resolution.height);
-
-		ret = of_property_read_u32(sensors, "sensor,format",
-						&ap1302->sensor_info.format);
-		if (ret < 0) {
-			dev_err(ap1302->dev, "missing sensor,format info\n");
-			ret = -EINVAL;
-			goto done;
-		}
-		dev_dbg(ap1302->dev, "sensor,format 0x%x\n",
-				ap1302->sensor_info.format);
-
-		ap1302->primary_clk_rst_only = of_property_read_bool(sensors,
-				"sensor,primary-clk-rst-only");
-		if (ap1302->primary_clk_rst_only) {
-			dev_dbg(ap1302->dev,
-				"using primary sensor clock and reset only");
-		}
-	}
-
-
-	for_each_child_of_node(sensors, node) {
-		if (of_node_name_eq(node, "sensor")) {
-			ret = ap1302_sensor_parse_of(ap1302, node);
-			if (ret < 0) {
-				ret = -EINVAL;
-				goto done;
-			}
-		}
-	}
-
-done:
-	of_node_put(sensors);
-*/
 
 	return ret;
 }
