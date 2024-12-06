@@ -72,6 +72,17 @@ config VIDEO_ARDUCAM_PIVARIETY
 	  To compile this driver as a module, choose M here: the
 	  module will be called arducam-pivariety.
 
+config VIDEO_EVDMOOM1
+	tristate "Innodisk EVDM-OOM1 sensor module support"
+	depends on I2C && VIDEO_DEV
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  This is a Video4Linux2 sensor driver for the Innodisk
+	  EVDM-OOM1 camera module.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called evdmoom1.
+
 config VIDEO_HI556
 	tristate "Hynix Hi-556 sensor support"
 	help
