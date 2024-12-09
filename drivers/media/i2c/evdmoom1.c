@@ -1589,6 +1589,18 @@ static int ap1302_get_exp_met(struct ap1302_device *ap1302, s32 *value)
 	return 0;
 }
 
+static s32 analogue_gain_dummy;
+static int ap1302_set_analogue_gain(struct ap1302_device *ap1302, s32 val)
+{
+	analogue_gain_dummy = val;
+	return 0;
+}
+static int ap1302_get_analogue_gain(struct ap1302_device *ap1302, s32 *value)
+{
+	*value = analogue_gain_dummy;
+	return 0;
+}
+
 static int ap1302_set_gain(struct ap1302_device *ap1302, s32 val)
 {
 	// Format is U8.8
@@ -1983,6 +1995,10 @@ static int ap1302_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_GAIN:
 		return ap1302_set_gain(ap1302, ctrl->val);
 
+	case V4L2_CID_ANALOGUE_GAIN:
+		// TODO: Implement
+		return ap1302_set_analogue_gain(ap1302, ctrl->val);
+
 	case V4L2_CID_HFLIP:
 		return ap1302_set_hflip(ap1302, ctrl->val);
 
@@ -2048,6 +2064,9 @@ static int ap1302_g_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_GAIN:
 		return ap1302_get_gain(ap1302, &ctrl->val);
+
+	case V4L2_CID_ANALOGUE_GAIN:
+		return ap1302_get_analogue_gain(ap1302, &ctrl->val);
 
 	case V4L2_CID_HFLIP:
 		return ap1302_get_hflip(ap1302, &ctrl->val);
@@ -2175,6 +2194,15 @@ static const struct v4l2_ctrl_config ap1302_ctrls[] = {
 		.def = 0x100,
 	}, {
 		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_ANALOGUE_GAIN,
+		.name = "Anaologue Gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	}, {
+		.ops = &ap1302_ctrl_ops,
 		.id = V4L2_CID_HFLIP,
 		.name = "HFlip",
 		.type = V4L2_CTRL_TYPE_BOOLEAN,
@@ -2237,6 +2265,36 @@ static const struct v4l2_ctrl_config ap1302_ctrls[] = {
 		.step = 1,
 		.def = 0,
 	},
+	{
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_HBLANK,
+		.name = "HBlank",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 0xFFFF,
+		.step = 1,
+		.def = 0,
+	},
+	{
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_VBLANK,
+		.name = "VBlank",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 0xFFFF,
+		.step = 1,
+		.def = 0,
+	},
+	{
+		.ops = &ap1302_ctrl_ops,
+		.id = V4L2_CID_PIXEL_RATE,
+		.name = "Pixel Rate",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 0xFFFF,
+		.step = 1,
+		.def = 0,
+	}
 };
 
 static int ap1302_ctrls_init(struct ap1302_device *ap1302)
@@ -2991,8 +3049,7 @@ static int ap1302_request_firmware(struct ap1302_device *ap1302)
 	char name[64];
 	int ret;
 
-	ret = snprintf(name, sizeof(name), "ap1302_%s_fw.bin",
-			ap1302->sensor_info.model);
+	ret = snprintf(name, sizeof(name), "evdmoom1_fw.bin");
 	if (ret >= sizeof(name)) {
 		dev_err(ap1302->dev, "Firmware name too long\n");
 		return -EINVAL;
