@@ -1370,12 +1370,12 @@ static int ap1302_configure(struct ap1302_device *ap1302)
 
 	if (ap1302->test_pattern == AP1302_TP_MODE_DISABLED) {
 		dev_dbg(ap1302->dev, "Test pattern disabled - using primary sensor.\n");
-		value |= AP1302_SENSOR_SELECT_PATTERN_ON |
-			AP1302_SENSOR_SELECT_SENSOR_TP;
-	} else {
-		dev_dbg(ap1302->dev, "Test pattern %d\n", ap1302->test_pattern);
 		value |= AP1302_SENSOR_SELECT_TP_MODE(0) | AP1302_SENSOR_SELECT_SENSOR_PRIM |
 			AP1302_SENSOR_SELECT_RESET_PRIM | AP1302_SENSOR_SELECT_CLOCK_PRIM;
+	} else {
+		dev_dbg(ap1302->dev, "Test pattern %d\n", ap1302->test_pattern);
+		value |= AP1302_SENSOR_SELECT_PATTERN_ON |
+			AP1302_SENSOR_SELECT_SENSOR_TP;
 	}
 
 	dev_dbg(ap1302->dev,"Sensor Select = 0x%x\n",value);
@@ -2214,7 +2214,7 @@ static const struct v4l2_ctrl_config ap1302_ctrls[] = {
 	}, {
 		.ops = &ap1302_ctrl_ops,
 		.id = V4L2_CID_ANALOGUE_GAIN,
-		.name = "Anaologue Gain",
+		.name = "Analogue Gain",
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.min = 0x0,
 		.max = 0xFFFF,
