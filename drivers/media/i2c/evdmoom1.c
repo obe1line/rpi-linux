@@ -497,7 +497,6 @@ struct ap1302_device {
 	struct v4l2_subdev sd;
 	struct media_pad pads[AP1302_PAD_MAX];
 	struct ap1302_format formats[AP1302_PAD_MAX];
-	unsigned int width_factor;
 	bool streaming;
 
 	struct v4l2_ctrl_handler ctrls;
@@ -552,11 +551,20 @@ static const struct ap1302_format_info supported_video_formats[] = {
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_YUV_JFIF
 			 | AP1302_PREVIEW_OUT_FMT_FST_YUV_420,
 		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
-	},
-	{
+	}, {
 		.code = MEDIA_BUS_FMT_SRGGB12_1X12,
 		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_RAW12
 			 | AP1302_PREVIEW_OUT_FMT_FST_RAW_SENSOR,
+		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
+	}, {
+		.code = MEDIA_BUS_FMT_RGB888_1X24,
+		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_RGB
+			 | AP1302_PREVIEW_OUT_FMT_FST_RGB_888,
+		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
+	}, {
+		.code = MEDIA_BUS_FMT_JPEG_1X8,
+		.out_fmt = AP1302_PREVIEW_OUT_FMT_FT_JPEG_422
+			 | AP1302_PREVIEW_OUT_FMT_FST_JPEG_JFIF,
 		.pixel_rate = AP1302_INITIAL_PIXEL_RATE,
 	},
 };
@@ -1331,32 +1339,11 @@ done:
 	return ret;
 }
 
-static u16 ap1302_width_factor(struct ap1302_device *ap1302)
-{
-	/*
-	 * Width factor depends on the number of camera links
-	 */
-
-	//u16 width_factor=0;
-	//unsigned int i;
-
-	//for (i = 0; i < ARRAY_SIZE(ap1302->sensors); ++i) {
-	//	width_factor+= ap1302->sensors[i].link_enabled;
-	//}
-
-	//if (width_factor==0 || ap1302->use_vcid) {
-	//	width_factor = 1;
-	//}
-	//dev_dbg(ap1302->dev,"width_factor %d\n", width_factor);
-	return 1;  //return width_factor;
-}
-
 static int ap1302_configure(struct ap1302_device *ap1302)
 {
 	const struct ap1302_format *format = &ap1302->formats[AP1302_PAD_SOURCE_VC0];
 	unsigned int data_lanes = ap1302->bus_cfg.bus.mipi_csi2.num_data_lanes;
 	int ret = 0;
-	u16 width_factor = ap1302_width_factor(ap1302);
 
 	u32 value = AP1302_PREVIEW_HINF_CTRL_SPOOF |
 			AP1302_PREVIEW_HINF_CTRL_MIPI_LANES(data_lanes);
@@ -1383,7 +1370,7 @@ static int ap1302_configure(struct ap1302_device *ap1302)
 
 	dev_dbg(ap1302->dev,"format.width = 0x%x\n", format->format.width);
 	ap1302_write(ap1302, AP1302_PREVIEW_WIDTH,
-		     format->format.width / width_factor, &ret);
+		     format->format.width, &ret);
 	dev_dbg(ap1302->dev,"format.height = 0x%x\n", format->format.height);
 	ap1302_write(ap1302, AP1302_PREVIEW_HEIGHT,
 		     format->format.height, &ret);
@@ -2400,7 +2387,6 @@ static int ap1302_init_cfg(struct v4l2_subdev *sd,
 		 * setup.
 		 */
 		if (pad >= AP1302_PAD_SOURCE_VC0) {
-			format->width *= ap1302_width_factor(ap1302);
 			format->code = ap1302->formats[pad].info->code;
 		} else {
 			format->code = info->format;
@@ -2474,7 +2460,7 @@ static int ap1302_enum_frame_size(struct v4l2_subdev *sd,
 		if (i >= ARRAY_SIZE(supported_video_formats))
 			return -EINVAL;
 
-		fse->min_width = AP1302_MIN_WIDTH * ap1302_width_factor(ap1302);
+		fse->min_width = AP1302_MIN_WIDTH;
 		fse->min_height = AP1302_MIN_HEIGHT;
 		fse->max_width = AP1302_MAX_WIDTH;
 		fse->max_height = AP1302_MAX_HEIGHT;
@@ -2507,7 +2493,6 @@ static int ap1302_set_fmt(struct v4l2_subdev *sd,
 	const struct ap1302_format_info *info = NULL;
 	struct v4l2_mbus_framefmt *format;
 	unsigned int i;
-	u16 width_factor;
 
 	/* Formats on the sink pads can't be changed. */
 	if (fmt->pad < AP1302_PAD_SOURCE_VC0)
@@ -2526,16 +2511,12 @@ static int ap1302_set_fmt(struct v4l2_subdev *sd,
 	if (!info)
 		info = &supported_video_formats[0];
 
-
-	width_factor = ap1302_width_factor(ap1302);
 	/*
 	 * Clamp the size. The width must be a multiple of 4 (or 8 in the
 	 * dual-sensor case) and the height a multiple of 2.
 	 */
-	fmt->format.width = clamp(ALIGN_DOWN(fmt->format.width,
-					     4 * width_factor),
-				  AP1302_MIN_WIDTH * width_factor,
-				  AP1302_MAX_WIDTH);
+	fmt->format.width = clamp(ALIGN_DOWN(fmt->format.width, 4),
+				  AP1302_MIN_WIDTH, AP1302_MAX_WIDTH);
 	fmt->format.height = clamp(ALIGN_DOWN(fmt->format.height, 2),
 				   AP1302_MIN_HEIGHT, AP1302_MAX_HEIGHT);
 
@@ -2569,7 +2550,7 @@ static int ap1302_get_selection(struct v4l2_subdev *sd,
 	case V4L2_SEL_TGT_CROP:
 		sel->r.left = 0;
 		sel->r.top = 0;
-		sel->r.width = resolution->width * ap1302_width_factor(ap1302);
+		sel->r.width = resolution->width;
 		sel->r.height = resolution->height;
 		break;
 
